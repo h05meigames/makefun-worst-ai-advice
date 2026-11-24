@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 // One original line: the worst possible advice an AI could give.
 // It sounds like a real AI assistant (helpful opener, confident tone)
@@ -16,9 +16,26 @@ if (codePoints < 1 || codePoints > 140) {
 if (line.includes("\n") || line.includes("\r")) {
   throw new Error("line must be a single line");
 }
+// Reject any other control character: the scorer counts every character,
+// so an invisible control byte would silently eat budget and could make
+// the entry unreadable, while a tab would break the one-line display.
+if (/[\u0000-\u001f\u007f]/.test(line)) {
+  throw new Error("line must not contain control characters");
+}
+// Reject leading/trailing whitespace: it is invisible, wastes the
+// 140-character budget, and a whitespace-only edge would fail the gate.
+if (line !== line.trim()) {
+  throw new Error("line must not start or end with whitespace");
+}
 
 // The grader runs `node /bot/main.ts` with MAKEFUN_OUTPUT_DIR=/output
 // and a writable /output directory. Keep the fallback for local runs.
 const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 mkdirSync(outDir, { recursive: true });
 writeFileSync(`${outDir}/entry.txt`, line, "utf8");
+// Verify the write round-trips byte-exact: a truncated or altered file
+// would fail the gate silently, so fail loudly here instead.
+const written = readFileSync(`${outDir}/entry.txt`, "utf8");
+if (written !== line) {
+  throw new Error("entry.txt does not match the line after writing");
+}
